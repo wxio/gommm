@@ -1,8 +1,9 @@
 package gin_test
 
 import (
-	"github.com/codegangsta/gin/lib"
 	"testing"
+
+	gin "github.com/wxio/gommm/lib"
 )
 
 func Test_LoadConfig(t *testing.T) {

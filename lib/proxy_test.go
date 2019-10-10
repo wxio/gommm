@@ -2,11 +2,12 @@ package gin_test
 
 import (
 	"fmt"
-	"github.com/codegangsta/gin/lib"
 	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	gin "github.com/wxio/gommm/lib"
 )
 
 func Test_NewProxy(t *testing.T) {

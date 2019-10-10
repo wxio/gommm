@@ -6,7 +6,7 @@ import (
 	"runtime"
 	"testing"
 
-	"github.com/codegangsta/gin/lib"
+	gin "github.com/wxio/gommm/lib"
 )
 
 func Test_Builder_Build_Success(t *testing.T) {

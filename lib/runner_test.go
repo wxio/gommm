@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/codegangsta/gin/lib"
+	gin "github.com/wxio/gommm/lib"
 )
 
 func Test_NewRunner(t *testing.T) {
