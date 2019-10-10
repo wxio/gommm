@@ -15,20 +15,14 @@ import (
 	"time"
 
 	"github.com/jpillora/opts"
-	"github.com/urfave/cli"
 
 	gin "github.com/wxio/gommm/lib"
 )
 
 var (
-	startTime  = time.Now()
-	logger     = log.New(os.Stdout, "[gommm] ", 0)
-	colorGreen = string([]byte{27, 91, 57, 55, 59, 51, 50, 59, 49, 109})
-	colorRed   = string([]byte{27, 91, 57, 55, 59, 51, 49, 59, 49, 109})
-	colorReset = string([]byte{27, 91, 48, 109})
-	version    = "dev"
-	date       = "dev"
-	commit     = "dev"
+	version = "dev"
+	date    = "dev"
+	commit  = "dev"
 )
 
 type gommm struct {
@@ -46,7 +40,13 @@ type gommm struct {
 	Environment env      `opts:"mode=cmd" help:"output the constructed environent"`
 	Version     ver      `opts:"mode=cmd" help:"print version"`
 	//
-	env map[string][]envvar
+	env        map[string][]envvar
+	startTime  time.Time
+	logger     *log.Logger
+	colorGreen string
+	colorRed   string
+	colorReset string
+	count      int
 }
 
 type envvar struct {
@@ -68,9 +68,14 @@ type ver struct {
 
 func main() {
 	gommm := &gommm{
-		Bin:       ".gommm",
-		Path:      ".",
-		LogPrefix: "gommm",
+		Bin:        ".gommm",
+		Path:       ".",
+		LogPrefix:  "gommm",
+		startTime:  time.Now(),
+		logger:     log.New(os.Stdout, "[gommm] ", 0),
+		colorGreen: string([]byte{27, 91, 57, 55, 59, 51, 50, 59, 49, 109}),
+		colorRed:   string([]byte{27, 91, 57, 55, 59, 51, 49, 59, 49, 109}),
+		colorReset: string([]byte{27, 91, 48, 109}),
 	}
 	gommm.Run.gommm = gommm
 	gommm.Environment.gommm = gommm
@@ -87,7 +92,7 @@ func main() {
 		gommm.EnvFile = []string{".env"}
 	}
 	gommm.evalenv()
-	logger.SetPrefix(fmt.Sprintf("[%s] ", gommm.LogPrefix))
+	gommm.logger.SetPrefix(fmt.Sprintf("[%s] ", gommm.LogPrefix))
 	op.RunFatal()
 	return
 }
@@ -113,7 +118,7 @@ func (cfg *gommm) evalenv() {
 
 		fr, err := os.Open(file)
 		if err != nil {
-			logger.Printf("error reading env %s err %v\n", file, err)
+			cfg.logger.Printf("error reading env %s err %v\n", file, err)
 			continue
 		}
 		scanner := bufio.NewScanner(fr)
@@ -127,12 +132,12 @@ func (cfg *gommm) evalenv() {
 				val := os.ExpandEnv(va)
 				tpl, err := template.New("").Parse(val)
 				if err != nil {
-					logger.Printf("error in template parse env %s:%s err %v\n", ke, val, err)
+					cfg.logger.Printf("error in template parse env %s:%s err %v\n", ke, val, err)
 				} else {
 					buf := bytes.Buffer{}
 					err = tpl.Execute(&buf, data)
 					if err != nil {
-						logger.Printf("error in template execute env %s:%s err %v\n", ke, val, err)
+						cfg.logger.Printf("error in template execute env %s:%s err %v\n", ke, val, err)
 					} else {
 						val = buf.String()
 					}
@@ -151,39 +156,39 @@ func (cmd *run) Run() error {
 	// if err != nil {
 	// 	logger.Fatal(err)
 	// }
-
 	wd, err := os.Getwd()
 	if err != nil {
-		logger.Fatal(err)
+		cmd.gommm.logger.Fatal(err)
 	}
-
 	builder := gin.NewBuilder(
 		cmd.gommm.Path,
 		cmd.gommm.Bin,
 		wd,
+		cmd.gommm.GoModVendor,
 		cmd.gommm.BuildArgs,
 	)
-	runner := gin.NewRunner(filepath.Join(wd, builder.Binary()), cmd.Args...)
+	runner := gin.NewRunner(
+		filepath.Join(wd, builder.Binary()),
+		cmd.Args...,
+	)
 	runner.SetWriter(os.Stdout)
-
+	// shutdown handler
 	shutdown(runner)
-
 	// build right now
-	build(builder, runner, logger)
-
+	cmd.gommm.build(builder, runner, cmd.gommm.logger)
 	// scan for changes
-	scanChanges(
+	cmd.gommm.scanChanges(
 		cmd.gommm.Path,
 		cmd.gommm.ExcludeDir,
 		cmd.gommm.All,
 		func(path string) {
 			runner.Kill()
-			build(builder, runner, logger)
+			cmd.gommm.build(builder, runner, cmd.gommm.logger)
 		},
 	)
-
 	return nil
 }
+
 func (cmd *env) Run() error {
 	fmt.Printf("# env \n")
 	for ke, va := range cmd.gommm.env {
@@ -192,86 +197,35 @@ func (cmd *env) Run() error {
 	fmt.Printf("# --- \n")
 	return nil
 }
+
 func (cmd *ver) Run() error {
 	fmt.Printf("version\t%s\ncommit\t%s\ndate\t%s\n", version, commit, date)
 	return nil
 }
 
-func MainAction(c *cli.Context) {
-
-	// // Bootstrap the environment
-	// envy.Bootstrap()
-
-	// // Set the PORT env
-	// os.Setenv("PORT", appPort)
-
-	// wd, err := os.Getwd()
-	// if err != nil {
-	// 	logger.Fatal(err)
-	// }
-
-	// buildArgs, err := shellwords.Parse(c.GlobalString("buildArgs"))
-	// if err != nil {
-	// 	logger.Fatal(err)
-	// }
-
-	// buildPath := c.GlobalString("build")
-	// if buildPath == "" {
-	// 	buildPath = c.GlobalString("path")
-	// }
-	// builder := gin.NewBuilder(buildPath, c.GlobalString("bin"), c.GlobalBool("godep"), wd, buildArgs)
-	// runner := gin.NewRunner(filepath.Join(wd, builder.Binary()), c.Args()...)
-	// runner.SetWriter(os.Stdout)
-	// proxy := gin.NewProxy(builder, runner)
-
-	// config := &gin.Config{
-	// 	Laddr:    laddr,
-	// 	Port:     port,
-	// 	ProxyTo:  "http://localhost:" + appPort,
-	// 	KeyFile:  keyFile,
-	// 	CertFile: certFile,
-	// }
-
-	// err = proxy.Run(config)
-	// if err != nil {
-	// 	logger.Fatal(err)
-	// }
-
-	// if laddr != "" {
-	// 	logger.Printf("Listening at %s:%d\n", laddr, port)
-	// } else {
-	// 	logger.Printf("Listening on port %d\n", port)
-	// }
-
-	// shutdown(runner)
-
-	// // build right now
-	// build(builder, runner, logger)
-
-	// // scan for changes
-	// scanChanges(c.GlobalString("path"), c.GlobalStringSlice("excludeDir"), all, func(path string) {
-	// 	runner.Kill()
-	// 	build(builder, runner, logger)
-	// })
-}
-
-func build(builder gin.Builder, runner gin.Runner, logger *log.Logger) {
+func (cfg *gommm) build(builder gin.Builder, runner gin.Runner, logger *log.Logger) {
 	logger.Println("Building...")
-	err := builder.Build()
+	err := builder.Build(logger)
 	if err != nil {
-		logger.Printf("%sBuild failed%s\n", colorRed, colorReset)
+		logger.Printf("%sBuild failed%s\n", cfg.colorRed, cfg.colorReset)
 		fmt.Println(builder.Errors())
+		if cfg.FailIfFirst && cfg.count == 0 {
+			os.Exit(1)
+		}
 	} else {
-		logger.Printf("%sBuild finished%s\n", colorGreen, colorReset)
-		runner.Run()
+		logger.Printf("%sBuild finished%s\n", cfg.colorGreen, cfg.colorReset)
+		_, err = runner.Run()
+		if err != nil && cfg.FailIfFirst && cfg.count == 0 {
+			os.Exit(1)
+		}
 	}
-
+	cfg.count++
 	time.Sleep(100 * time.Millisecond)
 }
 
 type scanCallback func(path string)
 
-func scanChanges(watchPath string, excludeDirs []string, allFiles bool, cb scanCallback) {
+func (cfg *gommm) scanChanges(watchPath string, excludeDirs []string, allFiles bool, cb scanCallback) {
 	for {
 		filepath.Walk(watchPath, func(path string, info os.FileInfo, err error) error {
 			if path == ".git" && info.IsDir() {
@@ -282,18 +236,15 @@ func scanChanges(watchPath string, excludeDirs []string, allFiles bool, cb scanC
 					return filepath.SkipDir
 				}
 			}
-
 			// ignore hidden files
 			if filepath.Base(path)[0] == '.' {
 				return nil
 			}
-
-			if (allFiles || filepath.Ext(path) == ".go") && info.ModTime().After(startTime) {
+			if (allFiles || filepath.Ext(path) == ".go") && info.ModTime().After(cfg.startTime) {
 				cb(path)
-				startTime = time.Now()
+				cfg.startTime = time.Now()
 				return errors.New("done")
 			}
-
 			return nil
 		})
 		time.Sleep(500 * time.Millisecond)
