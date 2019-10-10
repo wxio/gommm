@@ -14,7 +14,6 @@ import (
 	"text/template"
 	"time"
 
-	envy "github.com/codegangsta/envy/lib"
 	"github.com/jpillora/opts"
 	"github.com/urfave/cli"
 
@@ -58,6 +57,7 @@ type envvar struct {
 
 type run struct {
 	*gommm
+	Args []string `opts:"mode=arg" help:"command to run"`
 }
 type env struct {
 	*gommm
@@ -146,7 +146,42 @@ func (cfg *gommm) evalenv() {
 }
 
 func (cmd *run) Run() error {
-	fmt.Printf("%+v\n", cmd)
+	fmt.Printf("%+v\n", *cmd)
+	// buildArgs, err := shellwords.Parse(c.GlobalString("buildArgs"))
+	// if err != nil {
+	// 	logger.Fatal(err)
+	// }
+
+	wd, err := os.Getwd()
+	if err != nil {
+		logger.Fatal(err)
+	}
+
+	builder := gin.NewBuilder(
+		cmd.gommm.Path,
+		cmd.gommm.Bin,
+		wd,
+		cmd.gommm.BuildArgs,
+	)
+	runner := gin.NewRunner(filepath.Join(wd, builder.Binary()), cmd.Args...)
+	runner.SetWriter(os.Stdout)
+
+	shutdown(runner)
+
+	// build right now
+	build(builder, runner, logger)
+
+	// scan for changes
+	scanChanges(
+		cmd.gommm.Path,
+		cmd.gommm.ExcludeDir,
+		cmd.gommm.All,
+		func(path string) {
+			runner.Kill()
+			build(builder, runner, logger)
+		},
+	)
+
 	return nil
 }
 func (cmd *env) Run() error {
@@ -218,22 +253,6 @@ func MainAction(c *cli.Context) {
 	// 	runner.Kill()
 	// 	build(builder, runner, logger)
 	// })
-}
-
-func EnvAction(c *cli.Context) {
-	logPrefix := c.GlobalString("logPrefix")
-	logger.SetPrefix(fmt.Sprintf("[%s] ", logPrefix))
-
-	// Bootstrap the environment
-	env, err := envy.Bootstrap()
-	if err != nil {
-		logger.Fatalln(err)
-	}
-
-	for k, v := range env {
-		fmt.Printf("%s: %s\n", k, v)
-	}
-
 }
 
 func build(builder gin.Builder, runner gin.Runner, logger *log.Logger) {
