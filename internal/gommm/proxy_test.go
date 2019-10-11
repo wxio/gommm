@@ -1,4 +1,4 @@
-package gin_test
+package gommm_test
 
 import (
 	"fmt"
@@ -7,13 +7,13 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	gin "github.com/wxio/gommm/lib"
+	"github.com/wxio/gommm/internal/gommm"
 )
 
 func Test_NewProxy(t *testing.T) {
 	builder := NewMockBuilder()
 	runner := NewMockRunner()
-	proxy := gin.NewProxy(builder, runner)
+	proxy := gommm.NewProxy(builder, runner)
 
 	expect(t, proxy != nil, true)
 }
@@ -21,9 +21,9 @@ func Test_NewProxy(t *testing.T) {
 func Test_Proxy_Run(t *testing.T) {
 	builder := NewMockBuilder()
 	runner := NewMockRunner()
-	proxy := gin.NewProxy(builder, runner)
+	proxy := gommm.NewProxy(builder, runner)
 
-	config := &gin.Config{}
+	config := &gommm.Config{}
 
 	proxy.Run(config)
 	defer proxy.Close()
@@ -32,7 +32,7 @@ func Test_Proxy_Run(t *testing.T) {
 func Test_Proxying(t *testing.T) {
 	builder := NewMockBuilder()
 	runner := NewMockRunner()
-	proxy := gin.NewProxy(builder, runner)
+	proxy := gommm.NewProxy(builder, runner)
 
 	// create a test server and see if we can proxy a request
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -40,7 +40,7 @@ func Test_Proxying(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	config := &gin.Config{
+	config := &gommm.Config{
 		Port:    5678,
 		ProxyTo: ts.URL,
 	}
@@ -61,7 +61,7 @@ func Test_Proxying(t *testing.T) {
 func Test_Proxying_Websocket(t *testing.T) {
 	builder := NewMockBuilder()
 	runner := NewMockRunner()
-	proxy := gin.NewProxy(builder, runner)
+	proxy := gommm.NewProxy(builder, runner)
 
 	// create a test server and see if we can proxy a websocket request
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -69,7 +69,7 @@ func Test_Proxying_Websocket(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	config := &gin.Config{
+	config := &gommm.Config{
 		Port:    5678,
 		ProxyTo: ts.URL,
 	}
@@ -95,9 +95,9 @@ func Test_Proxying_Build_Errors(t *testing.T) {
 	builder := NewMockBuilder()
 	builder.MockErrors = "Foo bar here are some errors"
 	runner := NewMockRunner()
-	proxy := gin.NewProxy(builder, runner)
+	proxy := gommm.NewProxy(builder, runner)
 
-	config := &gin.Config{
+	config := &gommm.Config{
 		Port:    5679,
 		ProxyTo: "http://localhost:3000",
 	}

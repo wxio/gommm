@@ -1,4 +1,4 @@
-package gin
+package gommm
 
 import (
 	"io"
@@ -10,6 +10,7 @@ import (
 	"time"
 )
 
+// Runner interface
 type Runner interface {
 	Run() (*exec.Cmd, error)
 	Info() (os.FileInfo, error)
@@ -23,14 +24,17 @@ type runner struct {
 	writer    io.Writer
 	command   *exec.Cmd
 	starttime time.Time
+	logger    *log.Logger
 }
 
-func NewRunner(bin string, args ...string) Runner {
+// NewRunner constructor
+func NewRunner(bin string, logger *log.Logger, args ...string) Runner {
 	return &runner{
 		bin:       bin,
 		args:      args,
 		writer:    ioutil.Discard,
 		starttime: time.Now(),
+		logger:    logger,
 	}
 }
 
@@ -38,7 +42,6 @@ func (r *runner) Run() (*exec.Cmd, error) {
 	if r.needsRefresh() {
 		r.Kill()
 	}
-
 	if r.command == nil || r.Exited() {
 		err := r.runBin()
 		if err != nil {
@@ -46,10 +49,8 @@ func (r *runner) Run() (*exec.Cmd, error) {
 		}
 		time.Sleep(250 * time.Millisecond)
 		return r.command, err
-	} else {
-		return r.command, nil
 	}
-
+	return r.command, nil
 }
 
 func (r *runner) Info() (os.FileInfo, error) {
@@ -105,18 +106,21 @@ func (r *runner) runBin() error {
 	if err != nil {
 		return err
 	}
-
 	err = r.command.Start()
 	if err != nil {
 		return err
 	}
-
 	r.starttime = time.Now()
-
 	go io.Copy(r.writer, stdout)
 	go io.Copy(r.writer, stderr)
-	go r.command.Wait()
-
+	go func() {
+		err = r.command.Wait()
+		if err != nil {
+			r.logger.Printf("Error running %s %v err:%v\n", r.bin, r.args, err)
+		}
+		stdout.Close()
+		stderr.Close()
+	}()
 	return nil
 }
 

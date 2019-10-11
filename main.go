@@ -15,8 +15,7 @@ import (
 	"time"
 
 	"github.com/jpillora/opts"
-
-	gin "github.com/wxio/gommm/lib"
+	"github.com/wxio/gommm/internal/gommm"
 )
 
 var (
@@ -25,17 +24,17 @@ var (
 	commit  = "dev"
 )
 
-type gommm struct {
-	Bin         string   `opts:"env=GIN_BIN,short=b" help:"Name of generated binary file"`
-	Path        string   `opts:"env=GIN_PATH,short=t" help:"Path to watch files"`
-	Build       string   `opts:"env=GIN_BUILD,short=d" help:"Path to build files  (defaults to same value as --path)"`
-	ExcludeDir  []string `opts:"env=GIN_EXCLUDE_DIR,short=x" help:"Relative directories to exclude"`
-	All         bool     `opts:"env=GIN_ALL,short=a" help:"Reloads whenever any file changes"`
-	BuildArgs   []string `opts:"env=GIN_BUILD_ARGS,short=r" help:"Additional go build arguments"`
-	LogPrefix   string   `opts:"env=GIN_LOG_PREFIX" help:"Log prefix"`
-	EnvFile     []string `opts:"env=GIN_ENV_FILE" help:"Env files to read. Later entries take precedent, Expansion applied to vars and template (default .env)"`
-	GoModVendor bool     `opts:"env=GIN_GOMOD_VENDOR" help:"run 'go mod vendor' before building"`
-	FailIfFirst bool     `opts:"env=GIN_FAIL_1ST" help:"fail is first build returns an error"`
+type root struct {
+	Bin         string   `opts:"env=GOMMM_BIN,short=b" help:"Name of generated binary file (default .gommm)"`
+	Path        string   `opts:"env=GOMMM_PATH,short=t" help:"Path to watch files (default .)"`
+	Build       string   `opts:"env=GOMMM_BUILD,short=d" help:"Path to build files  (defaults to --path)"`
+	ExcludeDir  []string `opts:"env=GOMMM_EXCLUDE_DIR,short=x" help:"Relative directories to exclude"`
+	All         bool     `opts:"env=GOMMM_ALL,short=a" help:"Reloads whenever any file changes"`
+	BuildArgs   []string `opts:"env=GOMMM_BUILD_ARGS,short=r" help:"Additional go build arguments"`
+	LogPrefix   string   `opts:"env=GOMMM_LOG_PREFIX" help:"Log prefix (default gommm)"`
+	EnvFile     []string `opts:"env=GOMMM_ENV_FILE" help:"Env files to read. Later entries take precedent, Expansion applied to vars and template (default .env)"`
+	GoModVendor bool     `opts:"env=GOMMM_GOMOD_VENDOR" help:"run 'go mod vendor' before building"`
+	FailIfFirst bool     `opts:"env=GOMMM_FAIL_1ST" help:"fail is first build returns an error"`
 	Run         run      `opts:"mode=cmd" help:"run the command"`
 	Environment env      `opts:"mode=cmd" help:"output the constructed environent"`
 	Version     ver      `opts:"mode=cmd" help:"print version"`
@@ -56,18 +55,25 @@ type envvar struct {
 }
 
 type run struct {
-	*gommm
+	rt   *root
 	Args []string `opts:"mode=arg" help:"command to run"`
 }
 type env struct {
-	*gommm
+	rt *root
 }
 type ver struct {
-	*gommm
+	rt *root
 }
 
 func main() {
-	gommm := &gommm{
+	gm0 := &root{}
+	opts.New(gm0).Name("gommm").Complete().UserConfigPath().Parse()
+	if len(gm0.EnvFile) == 0 {
+		gm0.EnvFile = []string{".env"}
+	}
+	gm0.evalenv()
+	//
+	gommm := &root{
 		Bin:        ".gommm",
 		Path:       ".",
 		LogPrefix:  "gommm",
@@ -77,27 +83,19 @@ func main() {
 		colorRed:   string([]byte{27, 91, 57, 55, 59, 51, 49, 59, 49, 109}),
 		colorReset: string([]byte{27, 91, 48, 109}),
 	}
-	gommm.Run.gommm = gommm
-	gommm.Environment.gommm = gommm
-	gommm.Version.gommm = gommm
-	op := opts.New(gommm).
-		Name("gommm").
-		Complete().
-		UserConfigPath().
-		Parse()
+	gommm.Run.rt = gommm
+	gommm.Environment.rt = gommm
+	gommm.Version.rt = gommm
+	op := opts.New(gommm).Name("gommm").Complete().UserConfigPath().Parse()
 	if gommm.Build == "" {
 		gommm.Build = gommm.Path
 	}
-	if len(gommm.EnvFile) == 0 {
-		gommm.EnvFile = []string{".env"}
-	}
-	gommm.evalenv()
 	gommm.logger.SetPrefix(fmt.Sprintf("[%s] ", gommm.LogPrefix))
 	op.RunFatal()
 	return
 }
 
-func (cfg *gommm) evalenv() {
+func (cfg *root) evalenv() {
 	cfg.env = make(map[string][]envvar)
 	data := struct {
 		Env map[string]string
@@ -151,39 +149,40 @@ func (cfg *gommm) evalenv() {
 }
 
 func (cmd *run) Run() error {
-	fmt.Printf("%+v\n", *cmd)
 	// buildArgs, err := shellwords.Parse(c.GlobalString("buildArgs"))
 	// if err != nil {
 	// 	logger.Fatal(err)
 	// }
 	wd, err := os.Getwd()
 	if err != nil {
-		cmd.gommm.logger.Fatal(err)
+		cmd.rt.logger.Fatal(err)
 	}
-	builder := gin.NewBuilder(
-		cmd.gommm.Path,
-		cmd.gommm.Bin,
+	builder := gommm.NewBuilder(
+		cmd.rt.Path,
+		cmd.rt.Bin,
 		wd,
-		cmd.gommm.GoModVendor,
-		cmd.gommm.BuildArgs,
+		cmd.rt.logger,
+		cmd.rt.GoModVendor,
+		cmd.rt.BuildArgs,
 	)
-	runner := gin.NewRunner(
+	runner := gommm.NewRunner(
 		filepath.Join(wd, builder.Binary()),
+		cmd.rt.logger,
 		cmd.Args...,
 	)
 	runner.SetWriter(os.Stdout)
 	// shutdown handler
 	shutdown(runner)
 	// build right now
-	cmd.gommm.build(builder, runner, cmd.gommm.logger)
+	cmd.rt.build(builder, runner)
 	// scan for changes
-	cmd.gommm.scanChanges(
-		cmd.gommm.Path,
-		cmd.gommm.ExcludeDir,
-		cmd.gommm.All,
+	cmd.rt.scanChanges(
+		cmd.rt.Path,
+		cmd.rt.ExcludeDir,
+		cmd.rt.All,
 		func(path string) {
 			runner.Kill()
-			cmd.gommm.build(builder, runner, cmd.gommm.logger)
+			cmd.rt.build(builder, runner)
 		},
 	)
 	return nil
@@ -191,10 +190,20 @@ func (cmd *run) Run() error {
 
 func (cmd *env) Run() error {
 	fmt.Printf("# env \n")
-	for ke, va := range cmd.gommm.env {
+	for ke, va := range cmd.rt.env {
 		fmt.Printf("%s=%s\n", ke, va[len(va)-1].val)
 	}
 	fmt.Printf("# --- \n")
+	fmt.Printf("%+v\n", *cmd.rt)
+
+	for _, kv := range os.Environ() {
+		fmt.Printf("%s\n", kv)
+	}
+
+	fmt.Printf("GOMMM_PATH=%s\n", os.Getenv("GOMMM_PATH"))
+
+	fmt.Printf("GOMMM_PATH=%s\n", cmd.rt.Path)
+
 	return nil
 }
 
@@ -203,17 +212,17 @@ func (cmd *ver) Run() error {
 	return nil
 }
 
-func (cfg *gommm) build(builder gin.Builder, runner gin.Runner, logger *log.Logger) {
-	logger.Println("Building...")
-	err := builder.Build(logger)
+func (cfg *root) build(builder gommm.Builder, runner gommm.Runner) {
+	cfg.logger.Println("Building...")
+	err := builder.Build()
 	if err != nil {
-		logger.Printf("%sBuild failed%s\n", cfg.colorRed, cfg.colorReset)
+		cfg.logger.Printf("%sBuild failed%s\n", cfg.colorRed, cfg.colorReset)
 		fmt.Println(builder.Errors())
 		if cfg.FailIfFirst && cfg.count == 0 {
 			os.Exit(1)
 		}
 	} else {
-		logger.Printf("%sBuild finished%s\n", cfg.colorGreen, cfg.colorReset)
+		cfg.logger.Printf("%sBuild finished%s\n", cfg.colorGreen, cfg.colorReset)
 		_, err = runner.Run()
 		if err != nil && cfg.FailIfFirst && cfg.count == 0 {
 			os.Exit(1)
@@ -225,7 +234,7 @@ func (cfg *gommm) build(builder gin.Builder, runner gin.Runner, logger *log.Logg
 
 type scanCallback func(path string)
 
-func (cfg *gommm) scanChanges(watchPath string, excludeDirs []string, allFiles bool, cb scanCallback) {
+func (cfg *root) scanChanges(watchPath string, excludeDirs []string, allFiles bool, cb scanCallback) {
 	for {
 		filepath.Walk(watchPath, func(path string, info os.FileInfo, err error) error {
 			if path == ".git" && info.IsDir() {
@@ -251,7 +260,7 @@ func (cfg *gommm) scanChanges(watchPath string, excludeDirs []string, allFiles b
 	}
 }
 
-func shutdown(runner gin.Runner) {
+func shutdown(runner gommm.Runner) {
 	c := make(chan os.Signal, 2)
 	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
 	go func() {

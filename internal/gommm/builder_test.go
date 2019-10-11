@@ -1,12 +1,13 @@
-package gin_test
+package gommm_test
 
 import (
+	"log"
 	"os"
 	"path/filepath"
 	"runtime"
 	"testing"
 
-	gin "github.com/wxio/gommm/lib"
+	"github.com/wxio/gommm/internal/gommm"
 )
 
 func Test_Builder_Build_Success(t *testing.T) {
@@ -21,7 +22,7 @@ func Test_Builder_Build_Success(t *testing.T) {
 		t.Fatalf("Could not get working directory: %v", err)
 	}
 
-	builder := gin.NewBuilder(dir, bin, false, wd, []string{})
+	builder := gommm.NewBuilder(dir, bin, wd, log.New(os.Stdout, "[gommm] ", 0), false, []string{})
 	err = builder.Build()
 	expect(t, err, nil)
 
