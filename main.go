@@ -123,6 +123,9 @@ func (cfg *root) evalenv() {
 		for scanner.Scan() {
 			line := scanner.Text()
 			kv := strings.Split(line, "#")
+			if strings.Contains(line, "\\#") {
+				kv = []string{strings.ReplaceAll(line, "\\#", "#")}
+			}
 			if i := strings.Index(kv[0], "="); i > 0 {
 				ke, va := kv[0][:i], kv[0][i+1:]
 				// fmt.Printf("-- k:'%s' v:'%s'\n", ke, va)
