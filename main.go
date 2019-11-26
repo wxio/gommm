@@ -66,7 +66,9 @@ type ver struct {
 }
 
 func main() {
-	gm0 := &root{}
+	gm0 := &root{
+		logger: log.New(os.Stdout, "[gommm-env] ", 0),
+	}
 	opts.New(gm0).Name("gommm").Complete().UserConfigPath().Parse()
 	if len(gm0.EnvFile) == 0 {
 		gm0.EnvFile = []string{".env"}
